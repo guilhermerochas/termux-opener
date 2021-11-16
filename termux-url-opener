@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+
+from http.client import responses
+import secrets
+from typing import List
+import sys
+import re
+import subprocess
+import requests
+import os
+import json
+from urllib.request import urlretrieve
+from pathlib import Path
+from http import cookiejar
+import shutil
+
+from requests.api import head
+from requests.models import cookiejar_from_dict
+
+folders = [
+    f'{os.getenv("HOME")}/storage/dcim/Sendvid',
+    f'{os.getenv("HOME")}/storage/dcim/Instagram',
+    f'{os.getenv("HOME")}/storage/dcim/Reddit',
+    f'{os.getenv("HOME")}/storage/dcim/Tiktok',
+]
+
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
+
+
+def parseCookieFile(cookiefile):
+    cookies = {}
+    with open(cookiefile, "r") as fp:
+        for line in fp:
+            if not re.match(r"^\#", line):
+                lineFields = line.strip().split("\t")
+                cookies[lineFields[5]] = lineFields[6]
+    return cookies
+
+
+def get_sendvid(url: str):
+    if url.find("/embed/") == -1:
+        url = f'{url[:url.find(".com") + 4]}/embed{url[url.find(".com") + 4:]}'
+
+    response = requests.get(url)
+    if response.status_code == 200:
+        result = re.findall(
+            re.compile(r'.src=".*', re.IGNORECASE), response.content.decode("utf-8")
+        )
+        for regx in result:
+            if str(regx).find(".m3u8") != -1:
+                url_start = regx.find('"') + 1
+                url_end = regx[url_start:].find("type=") + 4
+
+                if url_start != -1 and url_end != -1:
+                    url = regx[url_start:url_end]
+                    cmd = f'ffmpeg -i "{url}" -bsf:a aac_adtstoasc -vcodec copy -c copy -crf 50 {folders[0]}/{secrets.token_hex(8)}.mp4'
+                    proc = subprocess.call(cmd, shell=True)
+                    print(f"result code: {proc}")
+
+
+def get_youtube(url: str):
+    cmd = f"youtube-dl {url}"
+    proc = subprocess.call(cmd, shell=True)
+    print(f"result code: {proc}")
+
+
+def get_tiktok(url: str):
+    video_id = url.split("/")[-1].split("?")[0]
+    if video_id is not None or "":
+        cookies = parseCookieFile("./cookies.txt")
+        embedded_url = f"https://www.tiktok.com/embed/{video_id}"
+        session = requests.Session()
+        session.headers.update({"referer": embedded_url})
+        response = session.get(url=embedded_url, headers={"User-Agent": USER_AGENT})
+        if response.status_code == 200:
+            response_trans = response.text.translate(str.maketrans('"', "\n"))
+            match = re.search(
+                "^https:\/\/v16-web.tiktok.com\/video\/([a-zA-Z0-9-\/\?=&%_]+)$",
+                response_trans,
+                re.MULTILINE,
+            )
+            if match is not None:
+                video = match.group()
+                response = session.get(
+                    url=video,
+                    headers={"User-Agent": USER_AGENT},
+                    stream=True,
+                )
+                if response.status_code == 200:
+                    response.raw.decode_content = True
+                    try:
+                        with open(f"{folders[3]}/{video_id}.mp4", "wb") as file:
+                            for chunk in response.iter_content(chunk_size=512):
+                                if chunk:
+                                    file.write(chunk)
+                    except Exception as e:
+                        print(e)
+
+
+def get_reddit(url: str):
+    url = url.replace("https://www", "https://old")
+    print(url)
+    response = requests.get(
+        url,
+        cookies={"over18": "1"},
+        headers={"User-Agent": USER_AGENT},
+    )
+
+    if response.status_code == 200:
+        iterable = re.finditer(
+            r"https:\/\/(preview|i|v)\.redd\.it\/([a-zA-Z0-9]+)(\.(png|jpg|gif)|\/HLSPlaylist.m3u8)\??([a-zA-Z0-9=%]+)?",
+            response.text,
+        )
+        substring_regx = re.compile(r"\?width=(\d+)")
+        links = list(set([substring_regx.sub("", link.group()) for link in iterable]))
+        for link in links:
+            link = link.replace("preview", "i")
+            filename = link.split("/")[-1].split("?")[0]
+            try:
+                if filename.split(".")[-1] in ["jpg", "gif", "png"]:
+                    response = requests.get(link, stream=True)
+                    if response.status_code == 200:
+                        response.raw.decode_content = True
+                        with open(f"{folders[2]}/{filename}", "wb") as file:
+                            shutil.copyfileobj(response.raw, file)
+                else:
+                    cmd = f'ffmpeg -i "{link}" -bsf:a aac_adtstoasc -vcodec copy -c copy -crf 50 {folders[2]}/{secrets.token_hex(8)}.mp4'
+                    proc = subprocess.call(cmd, shell=True)
+                    print(f"result code: {proc}")
+            except Exception as e:
+                print(f"Error trying to download: {e}")
+                continue
+
+
+def get_instagram(url: str):
+    url = f'{url.replace(url.split("/")[-1], "")}?__a=1'
+    downloadable: List[str] = []
+    response = requests.get(url)
+    if response.status_code == 200:
+        json_result = json.loads(response.text)
+
+        if json_result["graphql"]["shortcode_media"]["is_video"]:
+            downloadable.append(json_result["graphql"]["shortcode_media"]["video_url"])
+        else:
+            check_first_vid: bool = (
+                json_result["graphql"]["shortcode_media"].get(
+                    "edge_sidecar_to_children"
+                )["edges"][0]["node"]["is_video"]
+                if json_result["graphql"]["shortcode_media"].get(
+                    "edge_sidecar_to_children"
+                )
+                is not None
+                else False
+            )
+            if check_first_vid:
+                downloadable.append(
+                    json_result["graphql"]["shortcode_media"].get(
+                        "edge_sidecar_to_children"
+                    )["edges"][0]["node"]["video_url"]
+                )
+            else:
+                resources: List = json_result["graphql"]["shortcode_media"][
+                    "display_resources"
+                ]
+                downloadable.append(
+                    max((r["config_height"], r["src"]) for r in resources)[1]
+                )
+
+        if (
+            json_result["graphql"]["shortcode_media"].get("edge_sidecar_to_children")
+            is not None
+        ):
+            edges: List = json_result["graphql"]["shortcode_media"][
+                "edge_sidecar_to_children"
+            ]["edges"][1:]
+            for edge in edges:
+                if edge["node"]["is_video"]:
+                    downloadable.append(edge["node"]["video_url"])
+                else:
+                    downloadable.append(
+                        max(
+                            (r["config_height"], r["src"])
+                            for r in edge["node"]["display_resources"]
+                        )[1]
+                    )
+
+        for downld in downloadable:
+            if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
+                print("NULL url found")
+                continue
+            try:
+                filename = downld.split("/")[-1].split("?")[0]
+                if filename.split(".")[-1] == "mp4":
+                    urlretrieve(downld, f"{folders[1]}/{filename}")
+                else:
+                    response = requests.get(downld, stream=True)
+                    if response.status_code == 200:
+                        response.raw.decode_content = True
+                        with open(f"{folders[1]}/{filename}", "wb") as file:
+                            shutil.copyfileobj(response.raw, file)
+            except Exception as e:
+                print(f"Error trying to download: {e}")
+                continue
+
+
+exps: List[list] = [
+    [
+        get_sendvid,
+        re.compile(
+            "^(http(s)?)?:\/\/((www|m)\.)?sendvid\.com\/(embed\/)?([a-zA-Z0-9]{8,8})$",
+            re.IGNORECASE,
+        ),
+    ],
+    [
+        get_youtube,
+        re.compile(
+            "^http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-\_]*)(&(amp;)?‌​[\w\?‌​=]*)?$",
+            re.IGNORECASE,
+        ),
+    ],
+    [
+        get_instagram,
+        re.compile(
+            "^((?:https?:)?\/\/)?((?:www|m)\.)?(?:instagram.com)\/(p|reel|tv)\/([a-zA-Z0-9_.-]){11,11}(\/)?([a-zA-Z0-9_=?]+)?$",
+            re.IGNORECASE,
+        ),
+    ],
+    [
+        get_reddit,
+        re.compile(
+            "^((?:https?:)?\/\/)(www\.)?reddit.com\/(user|r|u)\/([a-zA-Z0-9_]+)\/comments\/([\s\S\/_?=&]+)$",
+            re.IGNORECASE,
+        ),
+    ],
+    [
+        get_tiktok,
+        re.compile(
+            "^https:\/\/(m|www)\.tiktok.com\/(embed|@[a-zA-Z0-9_.]+\/video)\/(\d{19,19})((\?)[a-zA-Z_=&\d]+)?$",
+            re.IGNORECASE,
+        ),
+    ],
+]
+
+
+def main(args: List[str]) -> int:
+    for folder in folders:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+
+    if len(args) != 0:
+        for function, exp in exps:
+            if exp.match(args[0]) is not None:
+                function(args[0])
+                break
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
+
