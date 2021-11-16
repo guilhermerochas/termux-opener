@@ -26,17 +26,6 @@ folders = [
 
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
 
-
-def parseCookieFile(cookiefile):
-    cookies = {}
-    with open(cookiefile, "r") as fp:
-        for line in fp:
-            if not re.match(r"^\#", line):
-                lineFields = line.strip().split("\t")
-                cookies[lineFields[5]] = lineFields[6]
-    return cookies
-
-
 def get_sendvid(url: str):
     if url.find("/embed/") == -1:
         url = f'{url[:url.find(".com") + 4]}/embed{url[url.find(".com") + 4:]}'
