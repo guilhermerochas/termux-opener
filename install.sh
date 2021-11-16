@@ -8,7 +8,7 @@ function main() {
     return 1
   fi
 
-  for pkg in wget python3; do
+  for pkg in wget python3 ffmpeg; do
     if ! [[ -x $(command -v $pkg) ]]; then
       install_list="${install_list} ${pkg}"
     fi
