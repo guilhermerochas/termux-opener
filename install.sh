@@ -21,7 +21,7 @@ function main() {
   pip install youtube-dl requests
 
   mkdir -p "$HOME/.config/youtube-dl"
-  cat << EOF < $HOME/.config/youtube-dl/config
+  cat << EOF > $HOME/.config/youtube-dl/config
     --no-mtime
     -o /data/data/com.termux/files/home/storage/dcim/Youtube/%(title)s.%(ext)s
     -f "best[height<=480]"
