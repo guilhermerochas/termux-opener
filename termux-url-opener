@@ -51,7 +51,6 @@ def get_youtube(url: str):
 def get_tiktok(url: str):
     video_id = url.split("/")[-1].split("?")[0]
     if video_id is not None or "":
-        cookies = parseCookieFile("./cookies.txt")
         embedded_url = f"https://www.tiktok.com/embed/{video_id}"
         session = requests.Session()
         session.headers.update({"referer": embedded_url})
