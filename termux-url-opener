@@ -135,7 +135,16 @@ def get_reddit(url: str):
 def get_instagram(url: str):
     url = f'{url.replace(url.split("/")[-1], "")}?__a=1'
     downloadable: List[str] = []
-    response = requests.get(url)
+    response = requests.get(
+        url,
+        headers={
+            "Host": "www.instagram.com",
+            "User-Agent": USER_AGENT,
+            "Alt-Used": "www.instagram.com",
+            "Referer": url.split("?")[0],
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    )
     if response.status_code == 200:
         json_result = json.loads(response.text)
 
@@ -256,4 +265,3 @@ def main(args: List[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
-
