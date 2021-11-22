@@ -8,7 +8,7 @@ function main() {
     return 1
   fi
 
-  for pkg in wget python3; do
+  for pkg in wget python3 ffmpeg; do
     if ! [[ -x $(command -v $pkg) ]]; then
       install_list="${install_list} ${pkg}"
     fi
@@ -21,11 +21,11 @@ function main() {
   pip install youtube-dl requests
 
   mkdir -p "$HOME/.config/youtube-dl"
-  cat << EOF < $HOME/.config/youtube-dl/config
-    --no-mtime
-    -o /data/data/com.termux/files/home/storage/dcim/Youtube/%(title)s.%(ext)s
-    -f "best[height<=480]"
-  EOF
+  cat <<< '
+--no-mtime
+-o /data/data/com.termux/files/home/storage/dcim/Youtube/%(title)s.%(ext)s
+-f "best[height<=480]"
+  ' > $HOME/.config/youtube-dl/config
 
   mkdir -p "$HOME/bin"
 
