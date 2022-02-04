@@ -14,6 +14,19 @@ function main() {
     fi
   done
 
+  if [[ ! -f "$HOME/bin/.env" ]]; then
+    touch "$HOME/bin/.env"
+    echo "###########################################"
+    echo "# .ENV file not found... creating"
+    echo "# if you plan to use Instagram, you"
+    echo "# need to fill the file with required info:"
+    echo "#"
+    echo "# COOKIE=<cookie>"
+    echo "# APP_ID=<app_id>"
+    echo "# WWW_CLAIM=<www_claim>"
+    echo "###########################################"
+  fi
+
   if [[ -n $install_list ]]; then
     apt install ${install_list} -y
   fi
