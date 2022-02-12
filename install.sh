@@ -53,7 +53,7 @@ function main() {
   termux-fix-shebang "$HOME/bin/termux-url-opener"
 
   echo "termux-url-opener ready to use :)"
-  echo "you can now share videos and images from the supported list and download them automatically!"
+  echo "\n\nyou can now share videos and images from the supported list and download them automatically!"
 }
 
 main

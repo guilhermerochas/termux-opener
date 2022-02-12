@@ -23,6 +23,70 @@ folders = [
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
 
 
+def get_stories_instagram(url: str):
+    info = InstagramInfo.from_file(".env")
+    response = requests.get(
+        url,
+        headers={
+            "Host": "www.instagram.com",
+            "User-Agent": USER_AGENT,
+            "Alt-Used": "www.instagram.com",
+            "Referer": url.split("?")[0],
+            "X-Requested-With": "XMLHttpRequest",
+            "Cookie": info.cookie.encode("utf-8"),
+            "X-IG-App-ID": info.app_id,
+        },
+    )
+
+    regx = re.compile(
+        "((?:https?:)?\/\/)?((?:www|m)\.)?(?:instagram.com)\/stories\/highlights\/([0-9]{17,17})\/",
+        re.IGNORECASE,
+    )
+
+    result_regx = regx.search(response.text)
+
+    if result_regx is not None:
+        id_url = regx.search(response.text).group()
+        story_id = id_url[-18 : id_url.index("/", -1)]
+        stories_url = f"https://i.instagram.com/api/v1/feed/reels_media/?reel_ids=highlight:{story_id}"
+        response = requests.get(
+            stories_url,
+            headers={
+                "Host": "i.instagram.com",
+                "User-Agent": USER_AGENT,
+                "Alt-Used": "i.instagram.com",
+                "Referer": url.split("?")[0],
+                "X-Requested-With": "XMLHttpRequest",
+                "Cookie": info.cookie.encode("utf-8"),
+                "X-IG-App-ID": info.app_id,
+            },
+        )
+        if response.status_code == 200:
+            downlodable_list: List[str] = []
+            json_result = json.loads(response.text)
+            media_items = json_result["reels"][f"highlight:{story_id}"]["items"]
+            for item in media_items:
+                downlodable_list.append(instagram_result_type(item))
+
+            for downld in downlodable_list:
+                if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
+                    print("Null URL found")
+                    continue
+                try:
+                    filename = downld.split("/")[-1].split("?")[0]
+                    if filename.split(".")[-1] == "mp4":
+                        urlretrieve(downld, f"{folders[1]}/{filename}")
+                    else:
+                        response = requests.get(downld, stream=True)
+                        if response.status_code == 200:
+                            response.raw.decode_content = True
+                            with open(f"{folders[1]}/{filename}", "wb") as file:
+                                shutil.copyfileobj(response.raw, file)
+                except Exception as e:
+                    print(f"Error trying to download: {e}")
+                    continue
+
+
 def get_sendvid(url: str):
     if url.find("/embed/") == -1:
         url = f'{url[:url.find(".com") + 4]}/embed{url[url.find(".com") + 4:]}'
@@ -227,6 +291,13 @@ exps: List[list] = [
         get_tiktok,
         re.compile(
             "^https:\/\/(m|www)\.tiktok.com\/(embed|@[a-zA-Z0-9_.]+\/video)\/(\d{19,19})((\?)[a-zA-Z_=&\d]+)?$",
+            re.IGNORECASE,
+        ),
+    ],
+    [
+        get_stories_instagram,
+        re.compile(
+            "^((?:https?:)?\/\/)?((?:www|m)\.)?(?:instagram.com)\/s\/([a-zA-Z0-9])+(\/)?\?([a-zA-Z0-9_=&]+)?$",
             re.IGNORECASE,
         ),
     ],
