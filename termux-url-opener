@@ -30,14 +30,12 @@ def get_stories_instagram(url: str):
         headers={
             "Host": "www.instagram.com",
             "User-Agent": USER_AGENT,
-            "Alt-Used": "www.instagram.com",
-            "Referer": url.split("?")[0],
-            "X-Requested-With": "XMLHttpRequest",
             "Cookie": info.cookie.encode("utf-8"),
-            "X-IG-App-ID": info.app_id,
+            "X-IG-App-ID": info.app_id
         },
     )
 
+    print("foi ate aqui")
     regx = re.compile(
         "((?:https?:)?\/\/)?((?:www|m)\.)?(?:instagram.com)\/stories\/highlights\/([0-9]{17,17})\/",
         re.IGNORECASE,
@@ -54,9 +52,6 @@ def get_stories_instagram(url: str):
             headers={
                 "Host": "i.instagram.com",
                 "User-Agent": USER_AGENT,
-                "Alt-Used": "i.instagram.com",
-                "Referer": url.split("?")[0],
-                "X-Requested-With": "XMLHttpRequest",
                 "Cookie": info.cookie.encode("utf-8"),
                 "X-IG-App-ID": info.app_id,
             },
