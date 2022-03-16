@@ -10,6 +10,7 @@ with that being said, this is my personal configuration that downloads videos an
  - Reddit
  - Sendvid
  - Tiktok
+ - Kwai
 
 # How to use
 

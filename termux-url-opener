@@ -2,7 +2,7 @@
 
 from http.client import responses
 import secrets
-from typing import Any, List
+from typing import List
 import sys
 import re
 import subprocess
@@ -18,68 +18,34 @@ folders = [
     f'{os.getenv("HOME")}/storage/dcim/Instagram',
     f'{os.getenv("HOME")}/storage/dcim/Reddit',
     f'{os.getenv("HOME")}/storage/dcim/Tiktok',
+    f'{os.getenv("HOME")}/storage/dcim/Kwai',
 ]
 
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
 
 
-def get_stories_instagram(url: str):
-    info = InstagramInfo.from_file(".env")
-    response = requests.get(
-        url,
-        headers={
-            "Host": "www.instagram.com",
-            "User-Agent": USER_AGENT,
-            "Cookie": info.cookie.encode("utf-8"),
-            "X-IG-App-ID": info.app_id
-        },
-    )
+class InstagramInfo:
+    def __init__(self, cookie: str, app_id: str, www_claim: str):
+        self.cookie: str = cookie
+        self.app_id: str = app_id
+        self.www_claim: str = www_claim
 
-    print("foi ate aqui")
-    regx = re.compile(
-        "((?:https?:)?\/\/)?((?:www|m)\.)?(?:instagram.com)\/stories\/highlights\/([0-9]{17,17})\/",
-        re.IGNORECASE,
-    )
-
-    result_regx = regx.search(response.text)
-
-    if result_regx is not None:
-        id_url = regx.search(response.text).group()
-        story_id = id_url[-18 : id_url.index("/", -1)]
-        stories_url = f"https://i.instagram.com/api/v1/feed/reels_media/?reel_ids=highlight:{story_id}"
-        response = requests.get(
-            stories_url,
-            headers={
-                "Host": "i.instagram.com",
-                "User-Agent": USER_AGENT,
-                "Cookie": info.cookie.encode("utf-8"),
-                "X-IG-App-ID": info.app_id,
-            },
+    @classmethod
+    def from_file(self, file_path: str):
+        if not os.path.isfile(file_path):
+            raise Exception(f"file {file_path} not found!")
+        with open(file_path, "r") as file:
+            content = file.read()
+            splittedl_lines = content.splitlines()
+            envs = [tuple(line.split("=", 1)) for line in splittedl_lines]
+            for env in envs:
+                (key, value) = env
+                os.environ[key.strip()] = value.strip()
+        return InstagramInfo(
+            cookie=os.getenv("COOKIE"),
+            app_id=os.getenv("APP_ID"),
+            www_claim=os.getenv("WWW_CLAIM"),
         )
-        if response.status_code == 200:
-            downlodable_list: List[str] = []
-            json_result = json.loads(response.text)
-            media_items = json_result["reels"][f"highlight:{story_id}"]["items"]
-            for item in media_items:
-                downlodable_list.append(instagram_result_type(item))
-
-            for downld in downlodable_list:
-                if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
-                    print("Null URL found")
-                    continue
-                try:
-                    filename = downld.split("/")[-1].split("?")[0]
-                    if filename.split(".")[-1] == "mp4":
-                        urlretrieve(downld, f"{folders[1]}/{filename}")
-                    else:
-                        response = requests.get(downld, stream=True)
-                        if response.status_code == 200:
-                            response.raw.decode_content = True
-                            with open(f"{folders[1]}/{filename}", "wb") as file:
-                                shutil.copyfileobj(response.raw, file)
-                except Exception as e:
-                    print(f"Error trying to download: {e}")
-                    continue
 
 
 def get_sendvid(url: str):
@@ -103,29 +69,56 @@ def get_sendvid(url: str):
 
 
 def get_youtube(url: str):
-    cmd = f"youtube-dl {url}"
+    cmd = f"yt-dlp {url}"
     proc = subprocess.call(cmd, shell=True)
     print(f"result code: {proc}")
+
+
+def get_kwai(url: str):
+    response = requests.get(
+        url,
+        headers={"User-Agent": USER_AGENT},
+    )
+    if response.status_code == 200:
+        match = re.search(
+            "https:\/\/ali-([a-zA-Z]{2})-cdn.kwai.net\/bs2\/newWatermark\/([a-zA-Z0-9_]+).mp4",
+            response.text,
+            re.MULTILINE,
+        )
+        if match is not None:
+            video: str = match.group()
+            response = requests.get(
+                url=video,
+                headers={"User-Agent": USER_AGENT},
+                stream=True,
+            )
+            if response.status_code == 200:
+                response.raw.decode_content = True
+                video_name = video[video.rfind("/") + 1 :]
+                print(video_name)
+                try:
+                    with open(f"{folders[4]}/{video_name}", "wb") as file:
+                        for chunk in response.iter_content(chunk_size=512):
+                            if chunk:
+                                file.write(chunk)
+                except Exception as e:
+                    print(e)
 
 
 def get_tiktok(url: str):
     video_id = url.split("/")[-1].split("?")[0]
     if video_id is not None or "":
         embedded_url = f"https://www.tiktok.com/embed/{video_id}"
-        print(embedded_url)
         session = requests.Session()
         session.headers.update({"referer": embedded_url})
         response = session.get(url=embedded_url, headers={"User-Agent": USER_AGENT})
         if response.status_code == 200:
             response_trans = response.text.translate(str.maketrans('"', "\n"))
-            with open("./index.html", "wb") as file:
-                file.write(bytes(response_trans, "utf-8"))
             match = re.search(
-                "^https:\/\/v16-web.tiktok.com\/video\/([a-zA-Z0-9-\/\?=&%_~.]+)$",
+                "^https:\/\/v16-web.tiktok.com\/video\/([a-zA-Z0-9-\/\?=&%_]+)$",
                 response_trans,
                 re.MULTILINE,
             )
-            print(match)
             if match is not None:
                 video = match.group()
                 response = session.get(
@@ -178,39 +171,7 @@ def get_reddit(url: str):
                 continue
 
 
-def instagram_result_type(json_obj: Any) -> str:
-    if json_obj.get("video_versions") is None:
-        return json_obj["image_versions2"]["candidates"][0]["url"]
-    else:
-        return json_obj["video_versions"][0]["url"]
-
-
-class InstagramInfo:
-    def __init__(self, cookie: str, app_id: str, www_claim: str):
-        self.cookie: str = cookie
-        self.app_id: str = app_id
-        self.www_claim: str = www_claim
-
-    @classmethod
-    def from_file(self, file_path: str):
-        if not os.path.isfile(file_path):
-            raise Exception(f"file {file_path} not found!")
-        with open(file_path, "r") as file:
-            content = file.read()
-            splittedl_lines = content.splitlines()
-            envs = [tuple(line.split("=", 1)) for line in splittedl_lines]
-            for env in envs:
-                (key, value) = env
-                os.environ[key.strip()] = value.strip()
-        return InstagramInfo(
-            cookie=os.getenv("COOKIE"),
-            app_id=os.getenv("APP_ID"),
-            www_claim=os.getenv("WWW_CLAIM"),
-        )
-
-
 def get_instagram(url: str):
-    info = InstagramInfo.from_file(".env")
     url = f'{url.replace(url.split("/")[-1], "")}?__a=1'
     downloadable: List[str] = []
     response = requests.get(
@@ -221,22 +182,59 @@ def get_instagram(url: str):
             "Alt-Used": "www.instagram.com",
             "Referer": url.split("?")[0],
             "X-Requested-With": "XMLHttpRequest",
-            "Cookie": info.cookie.encode("utf-8"),
-            "X-IG-App-ID": info.app_id,
         },
     )
     if response.status_code == 200:
         json_result = json.loads(response.text)
-        main_object = json_result["items"][0]
-        if main_object.get("carousel_media") is None:
-            downloadable.append(instagram_result_type(main_object))
+
+        if json_result["graphql"]["shortcode_media"]["is_video"]:
+            downloadable.append(json_result["graphql"]["shortcode_media"]["video_url"])
         else:
-            for media_item in main_object["carousel_media"]:
-                downloadable.append(instagram_result_type(media_item))
+            check_first_vid: bool = (
+                json_result["graphql"]["shortcode_media"].get(
+                    "edge_sidecar_to_children"
+                )["edges"][0]["node"]["is_video"]
+                if json_result["graphql"]["shortcode_media"].get(
+                    "edge_sidecar_to_children"
+                )
+                is not None
+                else False
+            )
+            if check_first_vid:
+                downloadable.append(
+                    json_result["graphql"]["shortcode_media"].get(
+                        "edge_sidecar_to_children"
+                    )["edges"][0]["node"]["video_url"]
+                )
+            else:
+                resources: List = json_result["graphql"]["shortcode_media"][
+                    "display_resources"
+                ]
+                downloadable.append(
+                    max((r["config_height"], r["src"]) for r in resources)[1]
+                )
+
+        if (
+            json_result["graphql"]["shortcode_media"].get("edge_sidecar_to_children")
+            is not None
+        ):
+            edges: List = json_result["graphql"]["shortcode_media"][
+                "edge_sidecar_to_children"
+            ]["edges"][1:]
+            for edge in edges:
+                if edge["node"]["is_video"]:
+                    downloadable.append(edge["node"]["video_url"])
+                else:
+                    downloadable.append(
+                        max(
+                            (r["config_height"], r["src"])
+                            for r in edge["node"]["display_resources"]
+                        )[1]
+                    )
 
         for downld in downloadable:
             if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
-                print("Null URL found")
+                print("NULL url found")
                 continue
             try:
                 filename = downld.split("/")[-1].split("?")[0]
@@ -289,13 +287,7 @@ exps: List[list] = [
             re.IGNORECASE,
         ),
     ],
-    [
-        get_stories_instagram,
-        re.compile(
-            "^((?:https?:)?\/\/)?((?:www|m)\.)?(?:instagram.com)\/s\/([a-zA-Z0-9])+(\/)?\?([a-zA-Z0-9_=&]+)?$",
-            re.IGNORECASE,
-        ),
-    ],
+    [get_kwai, re.compile("^https:\/\/s.kw.ai\/p\/([a-zA-Z0-9]{8})$", re.IGNORECASE)],
 ]
 
 
