@@ -48,6 +48,116 @@ class InstagramInfo:
         )
 
 
+def get_stories_instagram(url: str):
+    info = InstagramInfo.from_file(".env")
+    response = requests.get(
+        url,
+        headers={
+            "Host": "www.instagram.com",
+            "User-Agent": USER_AGENT,
+            "Cookie": info.cookie.encode("utf-8"),
+            "X-IG-App-ID": info.app_id,
+        },
+    )
+
+    print("foi ate aqui")
+    regx = re.compile(
+        "((?:https?:)?\/\/)?((?:www|m)\.)?(?:instagram.com)\/stories\/highlights\/([0-9]{17,17})\/",
+        re.IGNORECASE,
+    )
+
+    result_regx = regx.search(response.text)
+
+    if result_regx is not None:
+        id_url = regx.search(response.text).group()
+        story_id = id_url[-18 : id_url.index("/", -1)]
+        stories_url = f"https://i.instagram.com/api/v1/feed/reels_media/?reel_ids=highlight:{story_id}"
+        response = requests.get(
+            stories_url,
+            headers={
+                "Host": "i.instagram.com",
+                "User-Agent": USER_AGENT,
+                "Cookie": info.cookie.encode("utf-8"),
+                "X-IG-App-ID": info.app_id,
+            },
+        )
+        if response.status_code == 200:
+            downlodable_list: List[str] = []
+            json_result = json.loads(response.text)
+            media_items = json_result["reels"][f"highlight:{story_id}"]["items"]
+            for item in media_items:
+                downlodable_list.append(instagram_result_type(item))
+
+            for downld in downlodable_list:
+                if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
+                    print("Null URL found")
+                    continue
+                try:
+                    filename = downld.split("/")[-1].split("?")[0]
+                    if filename.split(".")[-1] == "mp4":
+                        urlretrieve(downld, f"{folders[1]}/{filename}")
+                    else:
+                        response = requests.get(downld, stream=True)
+                        if response.status_code == 200:
+                            response.raw.decode_content = True
+                            with open(f"{folders[1]}/{filename}", "wb") as file:
+                                shutil.copyfileobj(response.raw, file)
+                except Exception as e:
+                    print(f"Error trying to download: {e}")
+                    continue
+
+
+def instagram_result_type(json_obj) -> str:
+    if json_obj.get("video_versions") is None:
+        return json_obj["image_versions2"]["candidates"][0]["url"]
+    else:
+        return json_obj["video_versions"][0]["url"]
+
+
+def get_instagram(url: str):
+    info = InstagramInfo.from_file(".env")
+    url = f'{url.replace(url.split("/")[-1], "")}?__a=1'
+    downloadable: List[str] = []
+    response = requests.get(
+        url,
+        headers={
+            "Host": "www.instagram.com",
+            "User-Agent": USER_AGENT,
+            "Alt-Used": "www.instagram.com",
+            "Referer": url.split("?")[0],
+            "X-Requested-With": "XMLHttpRequest",
+            "Cookie": info.cookie.encode("utf-8"),
+            "X-IG-App-ID": info.app_id,
+        },
+    )
+    if response.status_code == 200:
+        json_result = json.loads(response.text)
+        main_object = json_result["items"][0]
+        if main_object.get("carousel_media") is None:
+            downloadable.append(instagram_result_type(main_object))
+        else:
+            for media_item in main_object["carousel_media"]:
+                downloadable.append(instagram_result_type(media_item))
+
+        for downld in downloadable:
+            if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
+                print("Null URL found")
+                continue
+            try:
+                filename = downld.split("/")[-1].split("?")[0]
+                if filename.split(".")[-1] == "mp4":
+                    urlretrieve(downld, f"{folders[1]}/{filename}")
+                else:
+                    response = requests.get(downld, stream=True)
+                    if response.status_code == 200:
+                        response.raw.decode_content = True
+                        with open(f"{folders[1]}/{filename}", "wb") as file:
+                            shutil.copyfileobj(response.raw, file)
+            except Exception as e:
+                print(f"Error trying to download: {e}")
+                continue
+
+
 def get_sendvid(url: str):
     if url.find("/embed/") == -1:
         url = f'{url[:url.find(".com") + 4]}/embed{url[url.find(".com") + 4:]}'
@@ -287,7 +397,17 @@ exps: List[list] = [
             re.IGNORECASE,
         ),
     ],
-    [get_kwai, re.compile("^https:\/\/s.kw.ai\/p\/([a-zA-Z0-9]{8})$", re.IGNORECASE)],
+    [
+        get_stories_instagram,
+        re.compile(
+            "^((?:https?:)?\/\/)?((?:www|m)\.)?(?:instagram.com)\/s\/([a-zA-Z0-9])+(\/)?\?([a-zA-Z0-9_=&]+)?$",
+            re.IGNORECASE,
+        ),
+    ],
+    [
+        get_kwai,
+        re.compile("^https:\/\/s.kw.ai\/p\/([a-zA-Z0-9]{8})$", re.IGNORECASE),
+    ],
 ]
 
 
