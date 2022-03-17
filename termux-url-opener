@@ -115,7 +115,7 @@ def instagram_result_type(json_obj) -> str:
 
 
 def get_instagram(url: str):
-    info = InstagramInfo.from_file(".env")
+    info = InstagramInfo.from_file(".env_")
     url = f'{url.replace(url.split("/")[-1], "")}?__a=1'
     downloadable: List[str] = []
     response = requests.get(
@@ -123,13 +123,13 @@ def get_instagram(url: str):
         headers={
             "Host": "www.instagram.com",
             "User-Agent": USER_AGENT,
-            "Alt-Used": "www.instagram.com",
-            "Referer": url.split("?")[0],
-            "X-Requested-With": "XMLHttpRequest",
             "Cookie": info.cookie.encode("utf-8"),
             "X-IG-App-ID": info.app_id,
         },
     )
+    print(info.app_id)
+    print(response.status_code)
+    print("Is instagram")
     if response.status_code == 200:
         json_result = json.loads(response.text)
         main_object = json_result["items"][0]
@@ -276,86 +276,6 @@ def get_reddit(url: str):
                     cmd = f'ffmpeg -i "{link}" -bsf:a aac_adtstoasc -vcodec copy -c copy -crf 50 {folders[2]}/{secrets.token_hex(8)}.mp4'
                     proc = subprocess.call(cmd, shell=True)
                     print(f"result code: {proc}")
-            except Exception as e:
-                print(f"Error trying to download: {e}")
-                continue
-
-
-def get_instagram(url: str):
-    url = f'{url.replace(url.split("/")[-1], "")}?__a=1'
-    downloadable: List[str] = []
-    response = requests.get(
-        url,
-        headers={
-            "Host": "www.instagram.com",
-            "User-Agent": USER_AGENT,
-            "Alt-Used": "www.instagram.com",
-            "Referer": url.split("?")[0],
-            "X-Requested-With": "XMLHttpRequest",
-        },
-    )
-    if response.status_code == 200:
-        json_result = json.loads(response.text)
-
-        if json_result["graphql"]["shortcode_media"]["is_video"]:
-            downloadable.append(json_result["graphql"]["shortcode_media"]["video_url"])
-        else:
-            check_first_vid: bool = (
-                json_result["graphql"]["shortcode_media"].get(
-                    "edge_sidecar_to_children"
-                )["edges"][0]["node"]["is_video"]
-                if json_result["graphql"]["shortcode_media"].get(
-                    "edge_sidecar_to_children"
-                )
-                is not None
-                else False
-            )
-            if check_first_vid:
-                downloadable.append(
-                    json_result["graphql"]["shortcode_media"].get(
-                        "edge_sidecar_to_children"
-                    )["edges"][0]["node"]["video_url"]
-                )
-            else:
-                resources: List = json_result["graphql"]["shortcode_media"][
-                    "display_resources"
-                ]
-                downloadable.append(
-                    max((r["config_height"], r["src"]) for r in resources)[1]
-                )
-
-        if (
-            json_result["graphql"]["shortcode_media"].get("edge_sidecar_to_children")
-            is not None
-        ):
-            edges: List = json_result["graphql"]["shortcode_media"][
-                "edge_sidecar_to_children"
-            ]["edges"][1:]
-            for edge in edges:
-                if edge["node"]["is_video"]:
-                    downloadable.append(edge["node"]["video_url"])
-                else:
-                    downloadable.append(
-                        max(
-                            (r["config_height"], r["src"])
-                            for r in edge["node"]["display_resources"]
-                        )[1]
-                    )
-
-        for downld in downloadable:
-            if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
-                print("NULL url found")
-                continue
-            try:
-                filename = downld.split("/")[-1].split("?")[0]
-                if filename.split(".")[-1] == "mp4":
-                    urlretrieve(downld, f"{folders[1]}/{filename}")
-                else:
-                    response = requests.get(downld, stream=True)
-                    if response.status_code == 200:
-                        response.raw.decode_content = True
-                        with open(f"{folders[1]}/{filename}", "wb") as file:
-                            shutil.copyfileobj(response.raw, file)
             except Exception as e:
                 print(f"Error trying to download: {e}")
                 continue
