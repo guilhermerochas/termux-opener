@@ -225,7 +225,7 @@ def get_tiktok(url: str):
         if response.status_code == 200:
             response_trans = response.text.translate(str.maketrans('"', "\n"))
             match = re.search(
-                "^https:\/\/v16-web.tiktok.com\/video\/([a-zA-Z0-9-\/\?=&%_]+)$",
+                "^https:\/\/v16-web.tiktok.com\/video\/([a-zA-Z0-9-\/\?=&%_~.]+)$",
                 response_trans,
                 re.MULTILINE,
             )
