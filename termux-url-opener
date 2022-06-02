@@ -116,46 +116,65 @@ def instagram_result_type(json_obj) -> str:
 
 def get_instagram(url: str):
     info = InstagramInfo.from_file(".env_")
-    url = f'{url.replace(url.split("/")[-1], "")}?__a=1'
-    downloadable: List[str] = []
-    response = requests.get(
+    html_page_response = requests.get(
         url,
         headers={
             "Host": "www.instagram.com",
             "User-Agent": USER_AGENT,
             "Cookie": info.cookie.encode("utf-8"),
-            "X-IG-App-ID": info.app_id,
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-user": "?1",
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
         },
     )
-    print(info.app_id)
-    print(response.status_code)
-    print("Is instagram")
-    if response.status_code == 200:
-        json_result = json.loads(response.text)
-        main_object = json_result["items"][0]
-        if main_object.get("carousel_media") is None:
-            downloadable.append(instagram_result_type(main_object))
-        else:
-            for media_item in main_object["carousel_media"]:
-                downloadable.append(instagram_result_type(media_item))
 
-        for downld in downloadable:
-            if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
-                print("Null URL found")
-                continue
-            try:
-                filename = downld.split("/")[-1].split("?")[0]
-                if filename.split(".")[-1] == "mp4":
-                    urlretrieve(downld, f"{folders[1]}/{filename}")
+    if html_page_response.status_code == 200:
+        html_document = html_page_response.text
+        id_match = re.search(r"media\?id=([0-9]+)", html_document)
+        if id_match is not None:
+            match_result = id_match.group()
+            post_id = "".join([s for s in match_result if s.isdigit()])
+            url = f"https://i.instagram.com/api/v1/media/{post_id}/info/"
+            print(url)
+            downloadable: List[str] = []
+            response = requests.get(
+                url,
+                headers={
+                    "Host": "i.instagram.com",
+                    "User-Agent": USER_AGENT,
+                    "Cookie": info.cookie.encode("utf-8"),
+                    "X-IG-App-ID": info.app_id,
+                },
+            )
+            if response.status_code == 200:
+                json_result = json.loads(response.text)
+                main_object = json_result["items"][0]
+                if main_object.get("carousel_media") is None:
+                    downloadable.append(instagram_result_type(main_object))
                 else:
-                    response = requests.get(downld, stream=True)
-                    if response.status_code == 200:
-                        response.raw.decode_content = True
-                        with open(f"{folders[1]}/{filename}", "wb") as file:
-                            shutil.copyfileobj(response.raw, file)
-            except Exception as e:
-                print(f"Error trying to download: {e}")
-                continue
+                    for media_item in main_object["carousel_media"]:
+                        downloadable.append(instagram_result_type(media_item))
+
+                for downld in downloadable:
+                    if downld == "https://static.cdninstagram.com/rsrc.php/null.jpg":
+                        print("Null URL found")
+                        continue
+                    try:
+                        filename = downld.split("/")[-1].split("?")[0]
+                        if filename.split(".")[-1] == "mp4":
+                            urlretrieve(downld, f"{folders[1]}/{filename}")
+                        else:
+                            response = requests.get(downld, stream=True)
+                            if response.status_code == 200:
+                                response.raw.decode_content = True
+                                with open(f"{folders[1]}/{filename}", "wb") as file:
+                                    shutil.copyfileobj(response.raw, file)
+                    except Exception as e:
+                        print(f"Error trying to download: {e}")
+                        continue
+        else:
+            print(html_document)
 
 
 def get_sendvid(url: str):
